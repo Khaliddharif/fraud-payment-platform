@@ -80,3 +80,63 @@ CREATE TABLE account_activity_hourly (
     avg_amount            DECIMAL(18,2),
     PRIMARY KEY (account_id, window_start)
 );
+
+
+;WITH numbers AS (
+    SELECT TOP (1200)
+        ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n
+    FROM sys.objects a
+    CROSS JOIN sys.objects b
+)
+INSERT INTO accounts (
+    account_id,
+    account_type,
+    created_at,
+    country_code,
+    risk_tier,
+    kyc_level,
+    is_active
+)
+SELECT
+    n AS account_id,
+
+    -- Mostly individuals, some businesses
+    CASE 
+        WHEN n % 10 = 0 THEN 'business' 
+        ELSE 'individual' 
+    END AS account_type,
+
+    -- Account age: between today and ~2.5 years ago
+    DATEADD(day, -(n % 900), GETDATE()) AS created_at,
+
+    -- Country distribution
+    CASE 
+        WHEN n % 3 = 0 THEN 'FR'
+        WHEN n % 3 = 1 THEN 'DE'
+        ELSE 'ES'
+    END AS country_code,
+
+    -- Risk tiers
+    CASE 
+        WHEN n % 15 = 0 THEN 'high'
+        WHEN n % 5  = 0 THEN 'medium'
+        ELSE 'low'
+    END AS risk_tier,
+
+    -- KYC levels
+    CASE 
+        WHEN n % 12 = 0 THEN 'none'
+        WHEN n % 4  = 0 THEN 'basic'
+        ELSE 'full'
+    END AS kyc_level,
+
+    1 AS is_active
+FROM numbers;
+
+
+SELECT COUNT(*) AS total_accounts FROM accounts;
+
+
+SELECT TOP 20 *
+FROM accounts
+ORDER BY created_at DESC;
