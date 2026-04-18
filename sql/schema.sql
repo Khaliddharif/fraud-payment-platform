@@ -140,3 +140,96 @@ SELECT COUNT(*) AS total_accounts FROM accounts;
 SELECT TOP 20 *
 FROM accounts
 ORDER BY created_at DESC;
+
+
+;WITH numbers AS (
+    SELECT TOP (10000)
+        ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n
+    FROM sys.objects a
+    CROSS JOIN sys.objects b
+)
+INSERT INTO transactions (
+    transaction_id,
+    transaction_time,
+    transaction_type,
+    amount,
+    currency,
+    origin_account_id,
+    destination_account_id,
+    channel,
+    status,
+    risk_score,
+    is_fraud,
+    created_at
+)
+SELECT
+    n AS transaction_id,
+
+    -- Spread transactions over time (most recent first)
+    DATEADD(minute, -n, GETDATE()) AS transaction_time,
+
+    -- Mostly payments, some transfers
+    CASE 
+        WHEN n % 5 = 0 THEN 'transfer'
+        ELSE 'payment'
+    END AS transaction_type,
+
+    -- Fraudulent transactions have much higher amounts
+    CASE 
+        WHEN n % 50 = 0 THEN 3000 + (n % 2000)
+        ELSE 5 + (n % 250)
+    END AS amount,
+
+    'EUR' AS currency,
+
+    -- Pick origin & destination accounts
+    (n % 1200) + 1 AS origin_account_id,
+    ((n + 17) % 1200) + 1 AS destination_account_id,
+
+    -- Channels
+    CASE 
+        WHEN n % 3 = 0 THEN 'mobile'
+        WHEN n % 3 = 1 THEN 'web'
+        ELSE 'api'
+    END AS channel,
+
+    -- Fraud often gets blocked
+    CASE 
+        WHEN n % 50 = 0 THEN 'blocked'
+        ELSE 'approved'
+    END AS status,
+
+    -- Higher risk score for fraud
+    CASE 
+        WHEN n % 50 = 0 THEN 80 + (n % 20)
+        ELSE 5 + (n % 40)
+    END AS risk_score,
+
+    -- Fraud label (~2%)
+    CASE 
+        WHEN n % 50 = 0 THEN 1
+        ELSE 0
+    END AS is_fraud,
+
+    GETDATE() AS created_at
+FROM numbers;
+
+
+
+SELECT COUNT(*) AS total_transactions
+FROM transactions;
+
+
+SELECT
+    COUNT(*) AS total_tx,
+    SUM(CASE WHEN is_fraud = 1 THEN 1 ELSE 0 END) AS fraud_tx,
+    CAST(
+        100.0 * SUM(CASE WHEN is_fraud = 1 THEN 1 ELSE 0 END) / COUNT(*) 
+        AS DECIMAL(5,2)
+    ) AS fraud_rate_pct
+FROM transactions;
+
+SELECT TOP 20 *
+FROM transactions
+ORDER BY risk_score DESC;
+
